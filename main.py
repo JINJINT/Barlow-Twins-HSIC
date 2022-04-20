@@ -257,7 +257,8 @@ def test_stats(net, data_loader):
     # print('test_off_diag_feat:', off_diag_f_total)
     on_diag_avg = (on_diag_total / args.feature_dim)**0.5
     on_diag_avg = on_diag_avg**0.5
-    print('test_on_diag_avg:', on_diag_avg)
+    print(f'feature_dim: {feature_dim} / lambda {lmbda}')
+    print('\ntest_on_diag_avg:', on_diag_avg)
     print('test_off_diag_avg:', off_diag_total / (args.feature_dim * (args.feature_dim-1)))
     print('test_on_diag_feat_avg:', on_diag_f_total / args.feature_dim)
     print('test_off_diag_feat_avg:', off_diag_f_total / (args.feature_dim * (args.feature_dim-1)))
@@ -386,7 +387,7 @@ if __name__ == '__main__':
       test_stats(model, memory_loader)
       print("On test set")
       test_stats(model, test_loader)
-      os.exit()
+      exit()
 
     test_acc_1, test_acc_5 = test(model, memory_loader, test_loader, epoch=-1)
     for epoch in range(1, epochs + 1):
