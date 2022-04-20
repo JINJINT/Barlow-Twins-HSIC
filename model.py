@@ -5,7 +5,7 @@ from torchvision.models.resnet import resnet50
 
 
 class Model(nn.Module):
-    def __init__(self, feature_dim=128, dataset='cifar10'):
+    def __init__(self, feature_dim=128, proj_head_type='2layer', dataset='cifar10'):
         super(Model, self).__init__()
 
         self.f = []
@@ -21,8 +21,17 @@ class Model(nn.Module):
         # encoder
         self.f = nn.Sequential(*self.f)
         # projection head
-        self.g = nn.Sequential(nn.Linear(2048, 512, bias=False), nn.BatchNorm1d(512),
-                               nn.ReLU(inplace=True), nn.Linear(512, feature_dim, bias=True))
+        if proj_head_type == '2layer':
+          self.g = nn.Sequential(nn.Linear(2048, 512, bias=False),
+                                 nn.BatchNorm1d(512),
+                                 nn.ReLU(inplace=True),
+                                 nn.Linear(512, feature_dim, bias=True))
+        elif proj_head_type == 'linear':
+          self.g = nn.Sequential(nn.BatchNorm1d(2048),
+                                 nn.ReLU(inplace=True),
+                                 nn.Linear(2048, feature_dim, bias=True))
+        elif proj_head_type == 'none':
+          self.g = lambda x:x
 
     def forward(self, x):
         x = self.f(x)
