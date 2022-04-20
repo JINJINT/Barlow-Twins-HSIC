@@ -37,35 +37,46 @@ def plot(net, test_data_loader):
             (data, _), target = data_tuple
             data, target = data.cuda(non_blocking=True), target.cuda(non_blocking=True)
             feature, out = net(data)
-            B, F = feature.shape
-            B, P = out.shape
+
+            # normalize features
+            o_std = out.std(dim=0)
+            o_std[o_std==0] = 1
+            out_norm = (out - out.mean(dim=0)) / o_std
+            f_std = feature.std(dim=0)
+            f_std[f_std==0] = 1
+            feat_norm = (feature - feature.mean(dim=0)) / f_std
+
+            _, F = feature.shape
+            _, P = out.shape
             total += 1
             if total < 5:
-                sim_matrix_feat = torch.mm(feature, feature.T)
-                out_matrix_feat = torch.mm(out, out.T)
+                sim_matrix_feat = torch.mm(feat_norm, feat_norm.T) / F
+                out_matrix_feat = torch.mm(out_norm, out_norm.T) / P
 
-                dim_matrix_feat = torch.mm(feature.T, feature)
-                dim_matrix_out = torch.mm(out.T, out)
+                dim_matrix_feat = torch.mm(feat_norm.T, feat_norm) / batch_size
+                dim_matrix_out = torch.mm(out_norm.T, out_norm) / batch_size
+
+                pdb.set_trace()
 
                 plt.clf()
                 ax = sns.heatmap(sim_matrix_feat.cpu().numpy())
                 plt.title(f"Inter Feature similarity (Encoder) {total}")
-                plt.savefig(f"inter_enc_feat_sim{total}.png", dpi=480)
+                plt.savefig(os.path.join(fig_dir, f"inter_enc_feat_sim{total}.png"), dpi=480)
 
                 plt.clf()
                 ax = sns.heatmap(out_matrix_feat.cpu().numpy())
                 plt.title(f"Inter projection head feat similarity {total}")
-                plt.savefig(f"inter_ph_out_sim{total}.png", dpi=480)
+                plt.savefig(os.path.join(fig_dir, f"inter_ph_out_sim{total}.png"), dpi=480)
 
                 plt.clf()
                 ax = sns.heatmap(dim_matrix_feat.cpu().numpy())
                 plt.title(f"Inter feature dimension similarity (Encoder) {total}")
-                plt.savefig(f"inter_dim_enc_feat_sim{total}.png", dpi=480)
+                plt.savefig(os.path.join(fig_dir, f"inter_dim_enc_feat_sim{total}.png"), dpi=480)
 
                 plt.clf()
                 ax = sns.heatmap(dim_matrix_out.cpu().numpy())
                 plt.title(f"Inter feat dimension similarity (Projection head) {total}")
-                plt.savefig(f"inter_dim_ph_out_sim{total}.png", dpi=480)
+                plt.savefig(os.path.join(fig_dir, f"inter_dim_ph_out_sim{total}.png"), dpi=480)
 
                 for i in range(5):
                     sim_matrix_feat = torch.mm(feature[i].view(F, 1), feature[i].view(1, F))
@@ -73,22 +84,22 @@ def plot(net, test_data_loader):
                     plt.clf()
                     ax = sns.heatmap(sim_matrix_feat.cpu().numpy())
                     plt.title(f"feature correlation {i}")
-                    plt.savefig(f"feat_correlation_{total}_{i}.png", dpi=480)
+                    plt.savefig(os.path.join(fig_dir, f"feat_correlation_{total}_{i}.png"), dpi=480)
 
                     plt.clf()
                     ax = sns.heatmap(sim_matrix_out.cpu().numpy())
                     plt.title(f"output correlation {i}")
-                    plt.savefig(f"out_correlation_{total}_{i}.png", dpi=480)
+                    plt.savefig(os.path.join(fig_dir, f"out_correlation_{total}_{i}.png"), dpi=480)
 
                     plt.clf()
                     plt.hist(sim_matrix_feat.cpu().flatten().cpu().numpy(), 10)
                     plt.title(f"feature correlation distribution {i}")
-                    plt.savefig(f"feat_correlation_hist_{total}_{i}.png", dpi=480)
+                    plt.savefig(os.path.join(fig_dir, f"feat_correlation_hist_{total}_{i}.png"), dpi=480)
 
                     plt.clf()
                     plt.hist(sim_matrix_out.cpu().flatten().cpu().numpy(), 10)
                     plt.title(f"output correlation distribution {i}")
-                    plt.savefig(f"out_correlation_hist_{total}_{i}.png", dpi=480)
+                    plt.savefig(os.path.join(fig_dir, f"out_correlation_hist_{total}_{i}.png"), dpi=480)
                     count += 1
             
             mean_feat_val += feature.mean()
@@ -126,6 +137,8 @@ if __name__ == '__main__':
     parser.add_argument('--corr_zero', dest='corr_neg_one', action='store_false')
     parser.set_defaults(corr_neg_one=False)
 
+    parser.add_argument('--fig-dir', type=str, default='', help="Dir path in which the plots are saved.")
+
     # args parse
     args = parser.parse_args()
     dataset = args.dataset
@@ -133,7 +146,9 @@ if __name__ == '__main__':
     proj_head_type = args.proj_head_type
     batch_size, epochs = args.batch_size, args.epochs
     
-    
+    fig_dir = args.fig_dir
+    os.makedirs(fig_dir, exist_ok=1)
+     
     lmbda = args.lmbda
     corr_neg_one = args.corr_neg_one
 
