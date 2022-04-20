@@ -56,8 +56,6 @@ def plot(net, test_data_loader):
                 dim_matrix_feat = torch.mm(feat_norm.T, feat_norm) / batch_size
                 dim_matrix_out = torch.mm(out_norm.T, out_norm) / batch_size
 
-                pdb.set_trace()
-
                 plt.clf()
                 ax = sns.heatmap(sim_matrix_feat.cpu().numpy())
                 plt.title(f"Inter Feature similarity (Encoder) {total}")
