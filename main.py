@@ -35,7 +35,10 @@ except Exception as e:
 
 
 if torch.cuda.is_available():
-    torch.backends.cudnn.benchmark = True
+  torch.backends.cudnn.benchmark = True
+  device = 'gpu'
+else:
+  device = 'cpu'
 
 def off_diagonal(x):
     # return a flattened view of the off-diagonal elements of a square matrix
@@ -63,15 +66,25 @@ def train(net, data_loader, train_optimizer):
         c = torch.matmul(out_1_norm.T, out_2_norm) / batch_size
 
         # loss
-        on_diag = torch.diagonal(c).add_(-1).pow_(2).sum()
-        if corr_neg_one is False:
-            # the loss described in the original Barlow Twin's paper
-            # encouraging off_diag to be zero
-            off_diag = off_diagonal(c).pow_(2).sum()
+        if loss_no_on_diag:
+          on_diag = torch.tensor([0]).to(device)
         else:
-            # inspired by HSIC
-            # encouraging off_diag to be negative ones
-            off_diag = off_diagonal(c).add_(1).pow_(2).sum()
+          if corr_neg_one_on_diag is False:
+            on_diag = torch.diagonal(c).add_(-1).pow_(2).sum()
+          else:
+            on_diag = torch.diagonal(c).add_(1).pow_(2).sum()
+
+        if loss_no_off_diag:
+          off_diag = torch.tensor([0]).to(device)
+        else:
+          if corr_neg_one is False:
+              # the loss described in the original Barlow Twin's paper
+              # encouraging off_diag to be zero
+              off_diag = off_diagonal(c).pow_(2).sum()
+          else:
+              # inspired by HSIC
+              # encouraging off_diag to be negative ones
+              off_diag = off_diagonal(c).add_(1).pow_(2).sum()
         loss = on_diag + lmbda * off_diag
         
 
@@ -158,8 +171,12 @@ def test(net, memory_data_loader, test_data_loader, epoch):
             cf = torch.matmul(feat_norm.T, feat_norm) / batch_size
 
             # loss
-            on_diag = torch.diagonal(c).add_(-1).pow_(2).sum()
-            on_diag_f = torch.diagonal(cf).add_(-1).pow_(2).sum()
+            if corr_neg_one_on_diag is False:
+              on_diag = torch.diagonal(c).add_(-1).pow_(2).sum()
+              on_diag_f = torch.diagonal(cf).add_(-1).pow_(2).sum()
+            else:
+              on_diag = torch.diagonal(c).add_(1).pow_(2).sum()
+              on_diag_f = torch.diagonal(cf).add_(1).pow_(2).sum()
             if corr_neg_one is False:
                 # the loss described in the original Barlow Twin's paper
                 # encouraging off_diag to be zero
@@ -329,13 +346,21 @@ if __name__ == '__main__':
     # for barlow twins
     
     parser.add_argument('--lmbda', default=0.005, type=float, help='Lambda that controls the on- and off-diagonal terms')
+    # off diag entries: 0 or -1
     parser.add_argument('--corr_neg_one', dest='corr_neg_one', action='store_true')
     parser.add_argument('--corr_zero', dest='corr_neg_one', action='store_false')
     parser.set_defaults(corr_neg_one=False)
+    # on diag entries: 1 or -1
+    parser.add_argument('--corr_neg_one_on_diag', type=int, default=0, choices=[0,1],
+                        help="Whether to force the on-diag entries to be -1.")
 
     # optimization
     parser.add_argument('--lr', default=1e-3, type=float)
     parser.add_argument('--wd', default=1e-6, type=float)
+    parser.add_argument('--loss-no-on-diag', default=0, type=int, choices=[0,1],
+                        help="Whether to drop the loss term for on-diag entries.")
+    parser.add_argument('--loss-no-off-diag', default=0, type=int, choices=[0,1],
+                        help="Whether to drop the loss term for off-diag entries.")
 
     # logging
     parser.add_argument('--project', default='nonContrastive')
@@ -364,10 +389,10 @@ if __name__ == '__main__':
     proj_head_type = args.proj_head_type
     batch_size, epochs = args.batch_size, args.epochs
     lr, wd = args.lr, args.wd
-    
+    loss_no_on_diag, loss_no_off_diag = args.loss_no_on_diag, args.loss_no_off_diag
     
     lmbda = args.lmbda
-    corr_neg_one = args.corr_neg_one
+    corr_neg_one, corr_neg_one_on_diag = args.corr_neg_one, args.corr_neg_one_on_diag
     
     if USE_WANDB:
       if args.wb_name != 'default':
