@@ -13,11 +13,15 @@ except:
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import math
+import numpy as np
+import h5py
 
 import utils
 from model import Model
 
 import torchvision
+import matplotlib
+from matplotlib import pyplot as plt
 
 import pdb
 
@@ -199,13 +203,15 @@ def test(net, memory_data_loader, test_data_loader, epoch):
  
     return total_top1 * 100, total_top5 * 100
 
-def test_stats(net, data_loader):
+def test_stats(net, data_loader, fSinVals='', save_feats=0, fsave_feats=''):
     net.eval()
     with torch.no_grad():
         on_diag_total, off_diag_total = 0, 0
         on_diag_f_total, off_diag_f_total = 0, 0
         bt_cnt = 0
         data_bar = tqdm(data_loader)
+        ss_total, ssf_total = torch.zeros(args.feature_dim), torch.zeros(2048)
+        z_outs, z_feats = [], []
         for data_tuple in data_bar:
             bt_cnt += 1
 
@@ -223,6 +229,16 @@ def test_stats(net, data_loader):
             # cross-correlation matrix
             c = torch.matmul(out_norm.T, out_norm) / batch_size
             cf = torch.matmul(feat_norm.T, feat_norm) / batch_size
+            # check for the singular values
+            _, ss, _ = torch.svd(c)
+            _, ssf, _ = torch.svd(cf)
+            ss_total += ss.detach().cpu()
+            ssf_total += ssf.detach().cpu()
+
+            # save features
+            if save_feats:
+              z_outs += out_norm.detach().cpu().numpy(),
+              z_feats += feat_norm.detach().cpu().numpy(),
 
             # loss
             on_diag = torch.diagonal(c).pow_(2).sum()
@@ -262,7 +278,42 @@ def test_stats(net, data_loader):
     print('test_off_diag_avg:', off_diag_total / (args.feature_dim * (args.feature_dim-1)))
     print('test_on_diag_feat_avg:', on_diag_f_total / args.feature_dim)
     print('test_off_diag_feat_avg:', off_diag_f_total / (args.feature_dim * (args.feature_dim-1)))
- 
+
+    # plot the singular values
+    ss_total /= bt_cnt
+    ssf_total /= bt_cnt
+    # original values
+    _, feat_dim = feature.shape
+    out_dim = args.feature_dim
+    fig, (ax1, ax2) = plt.subplots(2,1)
+    fig.suptitle('Singular values')
+    ax1.bar(range(out_dim), ss_total.numpy())
+    ax1.set_ylabel(f'output (dim{out_dim})')
+    ax2.bar(range(feat_dim), ssf_total.numpy())
+    ax2.set_ylabel(f'features (dim{feat_dim})')
+    plt.savefig(fSinVals)
+    plt.clf()
+    # log values
+    _, feat_dim = feature.shape
+    out_dim = args.feature_dim
+    fig, (ax1, ax2) = plt.subplots(2,1)
+    fig.suptitle('Log singular values')
+    ax1.bar(range(out_dim), ss_total.log().numpy())
+    ax1.set_ylabel(f'output (dim{out_dim})')
+    ax2.bar(range(feat_dim), ssf_total.log().numpy())
+    ax2.set_ylabel(f'features (dim{feat_dim})')
+    plt.savefig(fSinVals.replace('.png', '_log.png'))
+    plt.clf()
+
+    if save_feats:
+      print(f"Saving features to {fsave_feats}")
+      hf = h5py.File(fsave_feats, 'w')
+      z_outs = np.concatenate(z_outs)
+      z_feats = np.concatenate(z_feats)
+      hf.create_dataset('outs', data=z_outs)
+      hf.create_dataset('feats', data=z_feats)
+      hf.close()
+
     return
 
 
@@ -290,6 +341,12 @@ if __name__ == '__main__':
     parser.add_argument('--project', default='nonContrastive')
     parser.add_argument('--wb-name', default='default', type=str,
                         help="Run name for wandb.")
+    parser.add_argument('--fSinVals', default='', type=str,
+                        help="Filename (full path) for singular value plots on feat/out.")
+    parser.add_argument('--save-feats', default=0, type=int,
+                        help="Whether to save features (before and after proj head).")
+    parser.add_argument('--fsave-feats', default='', type=str,
+                        help="Full path to the file for saving features.")
     
     # testing
     parser.add_argument('--test-only', default=0, type=int, choices=[0, 1],
@@ -383,10 +440,24 @@ if __name__ == '__main__':
     best_acc = 0.0
 
     if args.test_only:
-      print("On train set")
-      test_stats(model, memory_loader)
+      # plots
+      fig_dir = os.path.dirname(args.fSinVals)
+      os.makedirs(fig_dir, exist_ok=1)
+      # features
+      save_feats = args.save_feats
+      fsave_feats = args.fsave_feats
+      feat_dir = os.path.dirname(fsave_feats)
+      os.makedirs(feat_dir, exist_ok=1)
+
       print("On test set")
-      test_stats(model, test_loader)
+      fSinVals_test = args.fSinVals + '_test.png'
+      fsave_feats_test = args.fsave_feats + '_test.h5'
+      test_stats(model, test_loader, fSinVals=fSinVals_test, save_feats=save_feats, fsave_feats=fsave_feats_test)
+      exit()
+      print("On train set")
+      fSinVals_train = args.fSinVals + '_train.png'
+      fsave_feats_train = args.fsave_feats + '_train.h5'
+      test_stats(model, memory_loader, fSinVals=fSinVals_train, save_feats=save_feats, fsave_feats=fsave_feats_train)
       exit()
 
     test_acc_1, test_acc_5 = test(model, memory_loader, test_loader, epoch=-1)
