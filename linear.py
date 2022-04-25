@@ -4,7 +4,12 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from thop import profile, clever_format
+try:
+  from thop import profile, clever_format
+  USE_THOP = True
+except:
+  print("Not using thop.")
+  USE_THOP = False
 from torch.utils.data import DataLoader
 from torchvision.datasets import CIFAR10
 from tqdm import tqdm
@@ -12,6 +17,17 @@ from tqdm import tqdm
 import utils
 
 import torchvision
+
+import pdb
+
+try:
+  import wandb
+  USE_WANDB = True
+except Exception as e:
+  print('Exception:', e)
+  print('Not using wandb. \n\n')
+  USE_WANDB = False
+
 
 class Net(nn.Module):
     def __init__(self, num_class, pretrained_path, dataset):
@@ -37,6 +53,7 @@ def train_val(net, data_loader, train_optimizer):
 
     total_loss, total_correct_1, total_correct_5, total_num, data_bar = 0.0, 0.0, 0.0, 0, tqdm(data_loader)
     with (torch.enable_grad() if is_train else torch.no_grad()):
+        bt_cnt = 0
         for data, target in data_bar:
             data, target = data.cuda(non_blocking=True), target.cuda(non_blocking=True)
             out = net(data)
@@ -58,6 +75,13 @@ def train_val(net, data_loader, train_optimizer):
                                              total_correct_1 / total_num * 100, total_correct_5 / total_num * 100,
                                              model_path.split('/')[-1]))
 
+            bt_cnt += 1
+            if USE_WANDB and bt_cnt % 20 == 0:
+              wandb.log({
+                'loss':loss.item(),
+                'linear_total_correct_1': total_correct_1 / total_num * 100,
+                'linear_total_correct_5': total_correct_5 / total_num * 100,
+                })
     return total_loss / total_num, total_correct_1 / total_num * 100, total_correct_5 / total_num * 100
 
 
@@ -69,8 +93,25 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=512, help='Number of images in each mini-batch')
     parser.add_argument('--epochs', type=int, default=200, help='Number of sweeps over the dataset to train')
 
+    # optimization
+    parser.add_argument('--lr', default=1e-3, type=float)
+    parser.add_argument('--wd', default=1e-6, type=float)
+
+    # logging
+    parser.add_argument('--project', default='nonContrastive')
+    parser.add_argument('--wb-name', default='default', type=str,
+                        help="Run name for wandb.")
+
     args = parser.parse_args()
     model_path, batch_size, epochs = args.model_path, args.batch_size, args.epochs
+    lr, wd = args.lr, args.wd
+
+    if USE_WANDB:
+      if args.wb_name != 'default':
+        wandb.init(project=args.project, name=args.wb_name, config=args)
+      else:
+        wandb.init(project=args.project, config=args)
+
     dataset = args.dataset
     if dataset == 'cifar10':
         train_data = CIFAR10(root='data', train=True,\
@@ -95,18 +136,19 @@ if __name__ == '__main__':
     for param in model.f.parameters():
         param.requires_grad = False
 
-    if dataset == 'cifar10':
-        flops, params = profile(model, inputs=(torch.randn(1, 3, 32, 32).cuda(),))
-    elif dataset == 'tiny_imagenet' or dataset == 'stl10':
-        flops, params = profile(model, inputs=(torch.randn(1, 3, 64, 64).cuda(),))
-    flops, params = clever_format([flops, params])
-    print('# Model Params: {} FLOPs: {}'.format(params, flops))
-    optimizer = optim.Adam(model.fc.parameters(), lr=1e-3, weight_decay=1e-6)
+    if USE_THOP:
+      if dataset == 'cifar10':
+          flops, params = profile(model, inputs=(torch.randn(1, 3, 32, 32).cuda(),))
+      elif dataset == 'tiny_imagenet' or dataset == 'stl10':
+          flops, params = profile(model, inputs=(torch.randn(1, 3, 64, 64).cuda(),))
+      flops, params = clever_format([flops, params])
+      print('# Model Params: {} FLOPs: {}'.format(params, flops))
+    optimizer = optim.Adam(model.fc.parameters(), lr=lr, weight_decay=wd)
     loss_criterion = nn.CrossEntropyLoss()
     results = {'train_loss': [], 'train_acc@1': [], 'train_acc@5': [],
                'test_loss': [], 'test_acc@1': [], 'test_acc@5': []}
 
-    save_name = model_path.split('.pth')[0] + '_linear.csv'
+    save_name = args.wb_name + '_linear.csv'
 
     best_acc = 0.0
     for epoch in range(1, epochs + 1):
@@ -120,7 +162,17 @@ if __name__ == '__main__':
         results['test_acc@5'].append(test_acc_5)
         # save statistics
         data_frame = pd.DataFrame(data=results, index=range(1, epoch + 1))
-        data_frame.to_csv(save_name, index_label='epoch')
+        data_frame.to_csv(os.path.join('results_linear/', save_name), index_label='epoch')
         #if test_acc_1 > best_acc:
         #    best_acc = test_acc_1
         #    torch.save(model.state_dict(), 'results/linear_model.pth')
+        if USE_WANDB:
+          wandb.log({
+            'train_loss': train_loss,
+            'linear_train_top1': train_acc_1,
+            'linear_train_top5': train_acc_5,
+            'test_loss': test_loss,
+            'linear_test_top1': test_acc_1,
+            'linear_test_top5': test_acc_5,
+            })
+

@@ -49,12 +49,13 @@ def plot(net, test_data_loader):
             _, F = feature.shape
             _, P = out.shape
             total += 1
-            if total < 5:
+            if total < 5: # check the first 5 batches
                 sim_matrix_feat = torch.mm(feat_norm, feat_norm.T) / F
                 out_matrix_feat = torch.mm(out_norm, out_norm.T) / P
 
                 dim_matrix_feat = torch.mm(feat_norm.T, feat_norm) / batch_size
                 dim_matrix_out = torch.mm(out_norm.T, out_norm) / batch_size
+
 
                 plt.clf()
                 ax = sns.heatmap(sim_matrix_feat.cpu().numpy())
@@ -76,7 +77,7 @@ def plot(net, test_data_loader):
                 plt.title(f"Inter feat dimension similarity (Projection head) {total}")
                 plt.savefig(os.path.join(fig_dir, f"inter_dim_ph_out_sim{total}.png"), dpi=480)
 
-                for i in range(5):
+                for i in range(5): # check the first 5 samples
                     sim_matrix_feat = torch.mm(feature[i].view(F, 1), feature[i].view(1, F))
                     sim_matrix_out = torch.mm(out[i].view(P, 1), out[i].view(1, P))
                     plt.clf()
