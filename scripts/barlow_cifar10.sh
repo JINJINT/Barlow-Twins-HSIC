@@ -9,7 +9,7 @@ for lr in 3e-4
 do
 for wd in 1e-6
 do
-for feature_dim in 256
+for feature_dim in 512
 do
 for lambda in 0.05
 do
