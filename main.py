@@ -36,7 +36,7 @@ except Exception as e:
 
 if torch.cuda.is_available():
   torch.backends.cudnn.benchmark = True
-  device = 'gpu'
+  device = 'cuda'
 else:
   device = 'cpu'
 
