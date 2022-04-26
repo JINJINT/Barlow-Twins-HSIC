@@ -36,7 +36,7 @@ except Exception as e:
 
 if torch.cuda.is_available():
   torch.backends.cudnn.benchmark = True
-  device = 'gpu'
+  device = 'cuda'
 else:
   device = 'cpu'
 
@@ -67,7 +67,7 @@ def train(net, data_loader, train_optimizer):
 
         # loss
         if loss_no_on_diag:
-          on_diag = torch.tensor([0]).to(device)
+          on_diag = torch.tensor([0.0]).to(device)
         else:
           if corr_neg_one_on_diag is False:
             on_diag = torch.diagonal(c).add_(-1).pow_(2).sum()
@@ -75,7 +75,7 @@ def train(net, data_loader, train_optimizer):
             on_diag = torch.diagonal(c).add_(1).pow_(2).sum()
 
         if loss_no_off_diag:
-          off_diag = torch.tensor([0]).to(device)
+          off_diag = torch.tensor([0.0]).to(device)
         else:
           if corr_neg_one is False:
               # the loss described in the original Barlow Twin's paper
