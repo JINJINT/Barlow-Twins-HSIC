@@ -66,26 +66,32 @@ def train(net, data_loader, train_optimizer):
         c = torch.matmul(out_1_norm.T, out_2_norm) / batch_size
 
         # loss
-        if loss_no_on_diag:
-          on_diag = torch.tensor([0.0]).to(device)
-        else:
-          if corr_neg_one_on_diag is False:
-            on_diag = torch.diagonal(c).add_(-1).pow_(2).sum()
-          else:
-            on_diag = torch.diagonal(c).add_(1).pow_(2).sum()
+        if symloss:
+            if loss_no_on_diag:
+              on_diag = torch.tensor([0.0]).to(device)
+            else:
+              if corr_neg_one_on_diag is False:
+                on_diag = torch.diagonal(c).add_(-1).pow_(2).sum()
+              else:
+                on_diag = torch.diagonal(c).add_(1).pow_(2).sum()
 
-        if loss_no_off_diag:
-          off_diag = torch.tensor([0.0]).to(device)
+            if loss_no_off_diag:
+              off_diag = torch.tensor([0.0]).to(device)
+            else:
+              if corr_neg_one is False:
+                  # the loss described in the original Barlow Twin's paper
+                  # encouraging off_diag to be zero
+                  off_diag = off_diagonal(c).pow_(2).sum()
+              else:
+                  # inspired by HSIC
+                  # encouraging off_diag to be negative ones
+                  off_diag = off_diagonal(c).add_(1).pow_(2).sum()
+            loss = on_diag + lmbda * off_diag      
         else:
-          if corr_neg_one is False:
-              # the loss described in the original Barlow Twin's paper
-              # encouraging off_diag to be zero
-              off_diag = off_diagonal(c).pow_(2).sum()
-          else:
-              # inspired by HSIC
-              # encouraging off_diag to be negative ones
-              off_diag = off_diagonal(c).add_(1).pow_(2).sum()
-        loss = on_diag + lmbda * off_diag
+            on_diag = torch.tensor([0.0]).to(device)
+            off_diag = torch.tensor([0.0]).to(device)
+            loss = torch.linalg.matrix_norm(c - torch.eye(c.size(dim=0)), ord=1)
+
         
 
         train_optimizer.zero_grad()
@@ -361,6 +367,9 @@ if __name__ == '__main__':
                         help="Whether to drop the loss term for on-diag entries.")
     parser.add_argument('--loss-no-off-diag', default=0, type=int, choices=[0,1],
                         help="Whether to drop the loss term for off-diag entries.")
+    parser.add_argument('--symloss', dest='symloss', action='store_false',
+                        help="Whether use feature-instance symmetric loss or not.") # if false, then use 1norm of Crosscovar - I, which is not symmetric
+    parser.set_defaults(symloss=True)
 
     # logging
     parser.add_argument('--project', default='nonContrastive')
